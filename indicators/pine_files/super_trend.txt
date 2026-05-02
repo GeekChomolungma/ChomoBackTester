@@ -1,0 +1,146 @@
+//@version=5
+indicator("super trend period+", shorttitle="supertrend original", overlay=true)
+
+// // === INPUT MA LENGTHS ===
+// fastMA     = input.int(defval = 14,      title = "FastMA Length",   minval = 1, step = 1)
+// slowMA     = input.int(defval = 28,      title = "SlowMA Length",   minval = 1, step = 1)
+
+
+// === INPUT DATE RANGE ===
+fromMonth  = input.int(defval = 1,       title = "From Month",      minval = 1, maxval = 12)
+fromDay    = input.int(defval = 1,       title = "From Day",        minval = 1, maxval = 31)
+fromYear   = input.int(defval = 2021,    title = "From Year",       minval = 1970)
+thruMonth  = input.int(defval = 1,       title = "Thru Month",      minval = 1, maxval = 12)
+thruDay    = input.int(defval = 1,       title = "Thru Day",        minval = 1, maxval = 31)
+thruYear   = input.int(defval = 2112,    title = "Thru Year",       minval = 1970)
+
+
+// === INPUT TIME RANGE ===
+entryTime  = input.session('0000-0000',  title = "Entry Time")   // '0000-0000' is anytime to enter
+exitTime   = input.session('0000-0000',  title = "Exit Time")    // '0000-0000' is anytime to exit
+
+
+// === INPUT SHOW PLOTS ===
+showDate   = input(true,                 title = "Show Date Range")
+showTimeE  = input(true,                 title = "Show Time Entry")
+showTimeX  = input(true,                 title = "Show Time Exit")
+
+
+// === DATE & TIME RANGE FUNCTIONS ===
+isDate() =>                                                               // create function "within window of dates"
+    start  = timestamp(fromYear, fromMonth, fromDay, 00, 00)              // date start
+    finish = timestamp(thruYear, thruMonth, thruDay, 23, 59)              // date finish
+    isDate = time >= start and time <= finish                             // current date is "within window of dates"
+
+isTime(_position) =>                                                      // create function "within window of time"
+    isTime = time(timeframe.period, _position + ':1234567')               // current time is "within window of time"
+
+
+// === SUPER TREND ===
+type bar
+    float o = na
+    float h = na
+    float l = na
+    float c = na
+
+type alerts
+    bool s = na
+    bool b = na
+
+type supertrend
+    float s = na
+    int   d = na
+
+method src(bar b, simple string src) =>
+    float x = switch src
+        'oc2'   => math.avg(b.o, b.c          )
+        'hl2'   => math.avg(b.h, b.l          )
+        'hlc3'  => math.avg(b.h, b.l, b.c     )
+        'ohlc4' => math.avg(b.o, b.h, b.l, b.c)
+        'hlcc4' => math.avg(b.h, b.l, b.c, b.c)
+
+    x
+
+method atr(bar b, simple int len) =>
+    float tr = 
+         na(b.h[1]) ? 
+         b.h - b.l  : 
+         math.max(
+             math.max    (b.h - b.l, math.abs(b.h - b.c[1])), 
+             math.abs    (b.l - b.c[1])
+             )
+
+    len == 1 ? tr : ta.rma(tr, len)
+
+method st(bar b, simple float factor, simple int len) =>
+	float atr = b.atr( len )
+	float up  = b.src('hl2') + factor * atr
+    up       := up < nz(up[1]) or b.c[1] > nz(up[1]) ? up : nz(up[1])
+    float dn  = b.src('hl2') - factor * atr
+    dn       := dn > nz(dn[1]) or b.c[1] < nz(dn[1]) ? dn : nz(dn[1])
+	
+    float st  = na
+    int   dir = na
+    dir := switch
+        na(atr[1])         => 1
+        st[1] == nz(up[1]) => dir := b.c > up ? -1 : +1
+        =>                    dir := b.c < dn ? +1 : -1
+	st  :=                    dir == -1       ? dn : up
+	
+    supertrend.new(st, dir)
+
+
+const string tp = 'Choose an indicator source of which to base the SuperTrend on.'
+const string g1 = "SuperTrend Settings", const string gu = "UI Options"
+src  = input.source(close    , "Source"            ,             tp          , group = g1)
+len  = input.int   (10       , "Length"            ,             inline = '1', group = g1)
+mlt  = input.float (5.       , "Factor"            , 1, 20, 0.5, inline = '1', group = g1)
+clbl = input.bool  (false    , "Contrarian Signals",                           group = gu)
+colu = input.color (#008cff, "Colors"            ,             inline = '2', group = gu)
+cold = input.color (#ff4800, ""                  ,             inline = '2', group = gu)
+
+indicator1  = input.source(close    , "indicator1"            ,             tp          , group = g1)
+indicator2  = input.source(close    , "indicator2"            ,             tp          , group = g1)
+
+
+bar        b  = bar.new(
+       nz(src[1])               ,
+       math.max(nz(src[1]), src),
+       math.min(nz(src[1]), src),
+       src                      )
+
+// bar        b  = bar.new(
+//        nz(open),
+//        nz(high),
+//        nz(low),
+//        nz(close))
+
+float      tr = b  .atr(     len)
+supertrend st = b  .st (mlt, len)
+
+alerts a = alerts.new(
+                      math.sign(ta.change(st.d)) ==  1,
+                      math.sign(ta.change(st.d)) == -1)
+
+log.info("\ntest")
+
+color cst = switch st.d
+    +1 => cold
+    -1 => colu
+
+// === PLOTTING ===
+t = plot(st.d > 0 ? st.s : na, 'Bear ST'  , cst  , 1, plot.style_linebr)
+d = plot(st.d < 0 ? st.s : na, 'Bull ST'  , cst  , 1, plot.style_linebr)
+i = plot(st.d                , 'Direction', display = display.none     )
+c = plot(b.src('oc2')        , 'Filler'   , display = display.none     )
+// plot(tr+src, title = 'Average True Range', color = color.new(color.yellow, 0), linewidth = 2, style = plot.style_line)
+
+fill(t, c, color.new(cold, 90))
+fill(d, c, color.new(colu, 90))
+
+plotshape(clbl and a.s ? st.s + tr / 3 : na, 'Sell Signal', shape.labeldown, location.absolute, color.new(cold, 60), 0, '𝓢', chart.fg_color)
+plotshape(clbl and a.b ? st.s - tr / 3 : na, 'Buy Signal' , shape.labelup  , location.absolute, color.new(colu, 60), 0, '𝓑', chart.fg_color)
+
+bgcolor(color = showDate  and isDate()                       ? color.new(color.gray, 90)   : color(na))  // plot "within window of dates"
+bgcolor(color = showTimeE and isDate() and isTime(entryTime) ? color.new(color.lime, 90)   : color(na))  // plot "within window of entry time"
+bgcolor(color = showTimeX and isDate() and isTime(exitTime)  ? color.new(color.purple, 90) : color(na))  // plot "within window of exit time"

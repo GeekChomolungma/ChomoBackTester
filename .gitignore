@@ -1,0 +1,11 @@
+*.exe
+.vs/
+.vscode/
+
+env/
+__pycache__/
+market_info/
+
+visual_test/output/
+visual_test/figs/
+output/
