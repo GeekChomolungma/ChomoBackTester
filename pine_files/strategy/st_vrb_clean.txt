@@ -1,0 +1,217 @@
+//@version=5
+strategy("st_vrb_clean", overlay=true, pyramiding=0,
+     initial_capital=100000,
+     default_qty_type=strategy.cash,
+     default_qty_value=100000,
+     commission_type=strategy.commission.percent,
+     commission_value=0.1)
+
+// === Inputs ===
+g = "ST + VRB"
+
+ST_up  = input.source(close, "ST Red Line", group=g)
+ST_dn  = input.source(close, "ST Blue Line", group=g)
+ST_dir = input.source(close, "ST Direction", group=g)
+
+VRB_upper = input.source(close, "VRB Upper", group=g)
+VRB_lower = input.source(close, "VRB Lower", group=g)
+
+useShort = input.bool(false, "Enable Short", group=g)
+showSig  = input.bool(true, "Show Signals", group=g)
+
+stTouchPct    = input.float(0.005, "ST Touch Distance", step=0.001, group=g)
+vrbTouchPct   = input.float(0.10, "VRB Boundary Zone", step=0.01, group=g)
+takeProfitPct = input.float(0.07, "Level-1 Take Profit", step=0.005, group=g)
+stopLossPct = input.float(0.03, "Fixed Stop Loss", step=0.005, group=g)
+
+strategyAmount = input.float(500, "Strategy Amount", step=50, group=g)
+signalId = input.string("f9a2fa51-3bd9-41", "Signal ID", group=g)
+
+entryAmount   = str.tostring(strategyAmount)
+reverseAmount = str.tostring(strategyAmount * 2)
+closeAmount   = str.tostring(strategyAmount * 3)
+
+fromTime = input.time(timestamp("2024-01-01T00:00:00"), "From")
+toTime   = input.time(timestamp("2112-01-01T00:00:00"), "To")
+inDate   = time >= fromTime and time <= toTime
+
+// === Alert messages ===
+
+entryBuyMsg =
+     '{"symbol":"' + syminfo.ticker + '","side":"buy","positionSide":"BOTH","investmentType":"notional_value","amount":"' + entryAmount + '","price":"market","reduceOnly":false,"positionMode":"one_way_mode","signalId":"' + signalId + '","uid":"bcb5ba0369fceede2427d939092c0db4b13f819873a6a0cb4e28ea4b32cc08a5"}'
+
+entrySellMsg =
+     '{"symbol":"' + syminfo.ticker + '","side":"sell","positionSide":"BOTH","investmentType":"notional_value","amount":"' + entryAmount + '","price":"market","reduceOnly":false,"positionMode":"one_way_mode","signalId":"' + signalId + '","uid":"bcb5ba0369fceede2427d939092c0db4b13f819873a6a0cb4e28ea4b32cc08a5"}'
+
+reverseBuyMsg =
+     '{"symbol":"' + syminfo.ticker + '","side":"buy","positionSide":"BOTH","investmentType":"notional_value","amount":"' + reverseAmount + '","price":"market","reduceOnly":false,"positionMode":"one_way_mode","signalId":"' + signalId + '","uid":"bcb5ba0369fceede2427d939092c0db4b13f819873a6a0cb4e28ea4b32cc08a5"}'
+
+reverseSellMsg =
+     '{"symbol":"' + syminfo.ticker + '","side":"sell","positionSide":"BOTH","investmentType":"notional_value","amount":"' + reverseAmount + '","price":"market","reduceOnly":false,"positionMode":"one_way_mode","signalId":"' + signalId + '","uid":"bcb5ba0369fceede2427d939092c0db4b13f819873a6a0cb4e28ea4b32cc08a5"}'
+
+closeLongMsg =
+     '{"symbol":"' + syminfo.ticker + '","side":"sell","positionSide":"BOTH","investmentType":"notional_value","amount":"' + closeAmount + '","price":"market","reduceOnly":true,"positionMode":"one_way_mode","signalId":"' + signalId + '","uid":"bcb5ba0369fceede2427d939092c0db4b13f819873a6a0cb4e28ea4b32cc08a5"}'
+
+closeShortMsg =
+     '{"symbol":"' + syminfo.ticker + '","side":"buy","positionSide":"BOTH","investmentType":"notional_value","amount":"' + closeAmount + '","price":"market","reduceOnly":true,"positionMode":"one_way_mode","signalId":"' + signalId + '","uid":"bcb5ba0369fceede2427d939092c0db4b13f819873a6a0cb4e28ea4b32cc08a5"}'
+
+
+// === State ===
+var bool mainEntryActive = false
+
+// === ST direction ===
+// 原始逻辑：ST_dir 从 1 -> -1 触发 ale.b，也就是买入
+// 因此这里定义：-1 为牛市，1 为熊市
+bullST = ST_dir == -1
+bearST = ST_dir == 1
+
+// === Level 1: main ST flip signal ===
+mainBuy  = ta.crossunder(ST_dir, 0)   // 1 -> -1，转牛，做多
+mainSell = ta.crossover(ST_dir, 0)    // -1 -> 1，转熊，做空 / 平多
+
+// === Level 2: SuperTrend touch signal ===
+// 牛市靠近蓝线：支撑反弹，做多
+// 熊市靠近红线：压力回落，做空 / 平多
+touchBlue = bullST and math.abs(low - ST_dn) / close <= stTouchPct
+touchRed  = bearST and math.abs(high - ST_up) / close <= stTouchPct
+
+// === Level 3: VRB boundary signal ===
+// 接近下边界：反弹，做多
+// 接近上边界：回落，做空 / 平多
+vrbRange = math.max(VRB_upper - VRB_lower, syminfo.mintick)
+vrbRatio = (close - VRB_lower) / vrbRange
+
+touchVrbLower = vrbRatio <= vrbTouchPct
+touchVrbUpper = vrbRatio >= 1.0 - vrbTouchPct
+
+// === Prioritized signals ===
+longReason =
+     mainBuy       ? 1 :
+     touchBlue     ? 2 :
+     touchVrbLower ? 3 : 0
+
+shortReason =
+     mainSell      ? 1 :
+     touchRed      ? 2 :
+     touchVrbUpper ? 3 : 0
+
+strongLongSignal =
+     longReason == 1 or
+     longReason == 2
+
+strongShortSignal =
+     shortReason == 1 or
+     shortReason == 2
+
+longSignal  = inDate and longReason > 0
+shortSignal = inDate and shortReason > 0
+
+// 额外添加的买卖类别标识
+longEntryId =
+     longReason == 1 ? "Long_B1" :
+     longReason == 2 ? "Long_B2" :
+     longReason == 3 ? "Long_B3" : "Long"
+
+shortEntryId =
+     shortReason == 1 ? "Short_S1" :
+     shortReason == 2 ? "Short_S2" :
+     shortReason == 3 ? "Short_S3" : "Short"
+
+// === Fixed stop loss ===
+// 对所有买卖点开出的仓位都生效。
+// 做多：价格跌破开仓均价 fixed % 后平仓。
+// 做空：价格涨破开仓均价 fixed % 后平仓。
+longStopLoss =
+     strategy.position_size > 0 and
+     close <= strategy.position_avg_price * (1 - stopLossPct)
+
+shortStopLoss =
+     strategy.position_size < 0 and
+     close >= strategy.position_avg_price * (1 + stopLossPct)
+
+if longStopLoss and not strongLongSignal and not strongShortSignal
+    // strategy.close("Long", alert_message=closeLongMsg)
+    strategy.close_all(alert_message=closeLongMsg)
+    mainEntryActive := false
+
+if shortStopLoss and not strongShortSignal and not strongLongSignal
+    // strategy.close("Short", alert_message=closeShortMsg)
+    strategy.close_all(alert_message=closeShortMsg)
+    mainEntryActive := false
+
+// === Level-1 take profit ===
+// 只针对一级信号后的仓位。
+// 达到浮盈阈值后只平仓，不反向。
+longTakeProfit =
+     mainEntryActive and
+     strategy.position_size > 0 and
+     close >= strategy.position_avg_price * (1 + takeProfitPct)
+
+shortTakeProfit =
+     mainEntryActive and
+     strategy.position_size < 0 and
+     close <= strategy.position_avg_price * (1 - takeProfitPct)
+
+if longTakeProfit
+    // strategy.close("Long", alert_message=closeLongMsg)
+    strategy.close_all(alert_message=closeLongMsg)
+    mainEntryActive := false
+
+if shortTakeProfit
+    // strategy.close("Short", alert_message=closeShortMsg)
+    strategy.close_all(alert_message=closeShortMsg)
+    mainEntryActive := false
+
+buyAlertMsg  = strategy.position_size < 0 ? reverseBuyMsg : entryBuyMsg
+sellAlertMsg = strategy.position_size > 0 ? reverseSellMsg : entrySellMsg
+
+// === Execution ===
+// 同一根K线如果多空同时出现，则跳过，避免同bar双向打架。
+newLongTrade = strategy.position_size <= 0
+if longSignal and not shortSignal
+    if longReason == 1 or longReason == 2
+        strategy.entry(longEntryId, strategy.long, alert_message=buyAlertMsg)
+        if newLongTrade
+            mainEntryActive := longReason == 1
+    else if longReason == 3
+        strategy.close_all(alert_message=closeShortMsg)
+        mainEntryActive := false
+
+newShortTrade = strategy.position_size >= 0
+if shortSignal and not longSignal
+    if shortReason == 1 or shortReason == 2
+        if useShort
+            strategy.entry(shortEntryId, strategy.short, alert_message=sellAlertMsg)
+            if newShortTrade
+                mainEntryActive := shortReason == 1
+        else
+            strategy.close_all(alert_message=closeLongMsg)
+            mainEntryActive := false
+    else if shortReason == 3
+        strategy.close_all(alert_message=closeLongMsg)
+        mainEntryActive := false
+
+// === Plot ===
+plotshape(showSig and longReason == 1, title="B1", text="B1",
+     style=shape.labelup, location=location.belowbar,
+     color=color.new(color.aqua, 20), textcolor=color.white)
+
+plotshape(showSig and shortReason == 1, title="S1", text="S1",
+     style=shape.labeldown, location=location.abovebar,
+     color=color.new(color.red, 20), textcolor=color.white)
+
+plotshape(showSig and longReason == 2, title="B2", text="B2",
+     style=shape.labelup, location=location.belowbar,
+     color=color.new(color.aqua, 45), textcolor=color.white)
+
+plotshape(showSig and shortReason == 2, title="S2", text="S2",
+     style=shape.labeldown, location=location.abovebar,
+     color=color.new(color.red, 45), textcolor=color.white)
+
+plotshape(showSig and longReason == 3, title="B3", text="B3",
+     style=shape.labelup, location=location.belowbar,
+     color=color.new(color.aqua, 65), textcolor=color.white)
+
+plotshape(showSig and shortReason == 3, title="S3", text="S3",
+     style=shape.labeldown, location=location.abovebar,
+     color=color.new(color.red, 65), textcolor=color.white)

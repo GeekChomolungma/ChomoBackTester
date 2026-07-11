@@ -6,6 +6,6 @@ env/
 __pycache__/
 market_info/
 
-visual_test/output/
-visual_test/figs/
+visual_tools/output/
+visual_tools/figs/
 output/

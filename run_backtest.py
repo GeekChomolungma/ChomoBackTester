@@ -9,7 +9,7 @@ from strategy import get_strategy, run_strategy
 INPUT_ROOT = Path("market_info")
 OUTPUT_ROOT = Path("output")
 
-STRATEGY_NAME = "st_vol_band_reversal"
+STRATEGY_NAME = "st_vrb_clean"
 
 
 def process_one_file(csv_path: Path, strategy) -> None:
@@ -42,7 +42,7 @@ def process_one_file(csv_path: Path, strategy) -> None:
 
 def main() -> None:
     strategy = get_strategy(STRATEGY_NAME)
-    csv_files = sorted(INPUT_ROOT.glob("ltc/*.csv"))
+    csv_files = sorted(INPUT_ROOT.glob("zec/ZECUSDT_4h_Binance.csv"))
 
     for csv_path in csv_files:
         print(f"Processing: {csv_path}")

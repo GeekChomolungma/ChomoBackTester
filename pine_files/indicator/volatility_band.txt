@@ -1,0 +1,127 @@
+//----------------------------//
+//  Volatility Reversion 
+//  Momentum Bands (Indicator)
+//  UPTRICK - CLEAR VIEW INDICATOR
+//----------------------------//
+
+//@version=6
+indicator(title="Uptrick: Volatility Reversion Bands", overlay=true)
+
+//------------------------------------------------------------------
+// 1) USER INPUTS
+//------------------------------------------------------------------
+length      = input.int(title="Lookback Length", defval=20, minval=1)
+mult        = input.float(title="Standard Deviation Multiplier", defval=2.0, minval=0.1, step=0.1)
+atrMult     = input.float(title="ATR Multiplier", defval=1.5, minval=0.1, step=0.1)
+weakSignals = input.bool(title="Include Weak Signals (Near Bands)?", defval=true)
+
+//------------------------------------------------------------------
+// 2) MAIN CALCULATIONS
+//------------------------------------------------------------------
+basis       = ta.sma(close, length)
+bbUpper     = basis + ta.stdev(close, length) * mult
+bbLower     = basis - ta.stdev(close, length) * mult
+atrBand     = ta.atr(length) * atrMult
+
+reversalUpper = bbUpper + atrBand
+reversalLower = bbLower - atrBand
+
+// Signals: Cross below lower band => potential long
+//          Cross above upper band => potential short
+longSignal  = ta.crossunder(close, reversalLower)
+shortSignal = ta.crossover(close, reversalUpper)
+
+//------------------------------------------------------------------
+// 3) BOLLINGER/REVERSAL PLOTS & SIGNALS
+//------------------------------------------------------------------
+plot(reversalUpper, color=#e40df3, title="Reversal Upper")
+plot(reversalLower, color=#04ddd2, title="Reversal Lower")
+
+plotshape(
+     series=longSignal, 
+     location=location.belowbar, 
+     color=color.new(color.green, 0),
+     size=size.small,
+     style=shape.labelup, 
+     text="▲+", 
+     textcolor=color.white
+ )
+plotshape(
+     series=shortSignal, 
+     location=location.abovebar, 
+     color=color.new(color.red, 0), 
+     style=shape.labeldown, 
+     size=size.small,
+     text="▼+", 
+     textcolor=color.white
+ )
+
+//------------------------------------------------------------------
+// 4) GRADIENT BAR COLOR: from cyan (near lower) to purple (near upper)
+//    ratio = (close - reversalLower) / (reversalUpper - reversalLower)
+//    ratio→0 => near lower band => more cyan
+//    ratio→1 => near upper band => more purple
+//------------------------------------------------------------------
+denom         = math.max(reversalUpper - reversalLower, 0.0000001)
+ratio         = (close - reversalLower) / denom
+ratioClamped  = math.max(0.0, math.min(ratio, 1.0))
+
+// Helper function: Linear interpolation between two colors:
+f_colorGradient(_ratio, _colA, _colB) =>
+    // Extract R,G,B from each color
+    rA = color.r(_colA)
+    gA = color.g(_colA)
+    bA = color.b(_colA)
+    rB = color.r(_colB)
+    gB = color.g(_colB)
+    bB = color.b(_colB)
+    // Interpolate each channel
+    rr = rA + int((rB - rA) * _ratio)
+    rg = gA + int((gB - gA) * _ratio)
+    rb = bA + int((bB - bA) * _ratio)
+    color.rgb(rr, rg, rb, 0)
+
+// For the start color (0.0) = cyan, end color (1.0) = purple
+colCyan   = color.rgb(0, 255, 255)    // #00FFFF
+colPurple = color.rgb(128, 0, 128)    // #800080
+
+barColor  = f_colorGradient(ratioClamped, colCyan, colPurple)
+//barcolor(barColor)
+
+//------------------------------------------------------------------
+// 5) WEAK SIGNALS (optional) 
+//    Plot faint circles near upper/lower if ratio is within 10% 
+//    of that band. This can hint potential soon reversals
+//------------------------------------------------------------------
+upperThreshold = 0.9
+lowerThreshold = 0.1
+
+tooCloseUpper  = ratioClamped >= upperThreshold
+tooCloseLower  = ratioClamped <= lowerThreshold
+
+plotshape(
+     series=(weakSignals ? tooCloseUpper : false),
+     title="Potential SELL (Near Upper Band)",
+     style=shape.labeldown,
+     location=location.abovebar,
+     size=size.tiny,
+     color=color.new(color.red, 70),  // semi-transparent
+     text="▼",
+     textcolor=color.white
+ )
+
+
+
+
+plotshape(
+     series=(weakSignals ? tooCloseLower : false),
+     title="Potential BUY (Near Lower Band)",
+     location=location.belowbar,
+     style=shape.labelup,
+     size=size.tiny,
+     color=color.new(color.green, 70), // semi-transparent
+     text="▲",
+     textcolor=color.white
+ )
+
+
