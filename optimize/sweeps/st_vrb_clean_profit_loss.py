@@ -1,15 +1,18 @@
 """
-Grid search over st_vrb_clean's two "touch" thresholds (st_touch_pct,
-vrb_touch_pct) on one symbol/interval, over a fixed backtest window, with
-every other param held constant. Run as a module from the repo root:
+Grid search over st_vrb_clean's take-profit/stop-loss thresholds
+(take_profit_pct, stop_loss_pct) on one symbol/interval, over a fixed
+backtest window, with every other param held constant -- including
+st_touch_pct/vrb_touch_pct, fixed at the region found stable by
+optimize/sweeps/st_vrb_clean_touch.py (0.05 / 0.02). Run as a module from
+the repo root:
 
-    python -m optimize.sweeps.st_vrb_clean_touch
+    python -m optimize.sweeps.st_vrb_clean_profit_loss
 
 Copy this file under optimize/sweeps/ and swap INPUT_FILE /
 FIXED_OVERRIDES / PARAM_GRID / dates to adapt it to a different symbol,
 strategy, or param pair.
 
-Since st_touch_pct/vrb_touch_pct only affect generate_signals (not
+Since take_profit_pct/stop_loss_pct only affect generate_signals (not
 build_indicators), indicators are built ONCE over the full history (for
 correct SuperTrend/VolatilityBand warmup) and reused for every grid combo
 via run_grid_search(..., rebuild_indicators=False), instead of being
@@ -28,13 +31,13 @@ from optimize.visualize import plot_heatmap
 from strategy import build_enriched, get_strategy
 
 INPUT_FILE = Path("market_info/zec/ZECUSDT_4h_Binance.csv")
-OUTPUT_DIR = Path("output/optimize/st_vrb_clean_touch/zec")
+OUTPUT_DIR = Path("output/optimize/st_vrb_clean_profit_loss/zec")
 
 START_DATE = "2026-04-05"
 END_DATE = None  # None = through the latest bar in the data
 
-# Every param except st_touch_pct/vrb_touch_pct, held fixed at the values
-# already tuned by hand (see strategy/st_vrb_clean.py DEFAULT_PARAMS).
+# Every param except take_profit_pct/stop_loss_pct, held fixed -- including
+# st_touch_pct/vrb_touch_pct at the stable region found by the touch sweep.
 FIXED_OVERRIDES = {
     "st_length": 20,
     "st_factor": 5.5,
@@ -42,13 +45,13 @@ FIXED_OVERRIDES = {
     "vb_mult": 2.5,
     "vb_atr_mult": 1,
     "use_short": True,
-    "take_profit_pct": 0.1,
-    "stop_loss_pct": 0.03,
+    "st_touch_pct": 0.05,
+    "vrb_touch_pct": 0.02,
 }
 
 PARAM_GRID = {
-    "st_touch_pct": [round(0.01 * i, 2) for i in range(1, 11)],   # 0.01..0.10
-    "vrb_touch_pct": [round(0.01 * i, 2) for i in range(1, 11)],  # 0.01..0.10
+    "take_profit_pct": [round(0.01 * i, 2) for i in range(2, 21)],  # 0.02..0.20
+    "stop_loss_pct": [round(0.01 * i, 2) for i in range(2, 11)],    # 0.02..0.10
 }
 
 # net_pnl_pct/win_rate/max_drawdown_pct/sharpe_ratio were asked for
@@ -86,15 +89,15 @@ def main() -> None:
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    results_path = OUTPUT_DIR / f"{INPUT_FILE.stem}_touch_grid_results.csv"
+    results_path = OUTPUT_DIR / f"{INPUT_FILE.stem}_profit_loss_grid_results.csv"
     results.to_csv(results_path, index=False)
     print(f"Saved grid search results: {results_path}")
 
     for metric in METRICS:
         heatmap_path = plot_heatmap(
             results,
-            x_param="st_touch_pct",
-            y_param="vrb_touch_pct",
+            x_param="take_profit_pct",
+            y_param="stop_loss_pct",
             metric=metric,
             out_path=OUTPUT_DIR / f"{INPUT_FILE.stem}_{metric}_heatmap.png",
         )
