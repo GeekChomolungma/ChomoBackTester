@@ -1,10 +1,14 @@
 """
-Template for sweeping a strategy's params and visualizing the results.
-Copy this file, swap PARAM_GRID / INPUT_FILE / metric names for your
-own strategy, and run it as a module from the repo root (needed so the
-top-level datasource/strategy/backtest packages resolve):
+Full param sweep (st_length x st_factor) for the st_vol_band_reversal
+strategy, using the general-purpose optimize.grid_search.run_grid_search
+(indicators are recomputed for every combo, since st_length/st_factor
+feed build_indicators). Copy this file under optimize/sweeps/ as a
+starting point for a new strategy's sweep -- swap PARAM_GRID / INPUT_FILE
+/ strategy name / metric names. Run as a module from the repo root
+(needed so the top-level datasource/strategy/backtest/optimize packages
+resolve):
 
-    python -m optimize.example_grid_search
+    python -m optimize.sweeps.st_vol_band_reversal
 """
 
 from pathlib import Path

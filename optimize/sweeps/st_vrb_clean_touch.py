@@ -3,25 +3,27 @@ Grid search over st_vrb_clean's two "touch" thresholds (st_touch_pct,
 vrb_touch_pct) on one symbol/interval, over a fixed backtest window, with
 every other param held constant. Run as a module from the repo root:
 
-    python -m optimize.example_st_vrb_clean_touch_grid
+    python -m optimize.sweeps.st_vrb_clean_touch
 
-Copy this file and swap INPUT_FILE / FIXED_OVERRIDES / PARAM_GRID / dates
-to adapt it to a different symbol, strategy, or param pair.
+Copy this file under optimize/sweeps/ and swap INPUT_FILE /
+FIXED_OVERRIDES / PARAM_GRID / dates to adapt it to a different symbol,
+strategy, or param pair.
 
 Since st_touch_pct/vrb_touch_pct only affect generate_signals (not
 build_indicators), indicators are built ONCE over the full history (for
 correct SuperTrend/VolatilityBand warmup) and reused for every grid combo
-via run_signal_grid_search, instead of being recomputed per combo like
-optimize.grid_search.run_grid_search does. The backtest window itself is
-carved out afterward with slice_with_lookback + report_start, so warmup
-sees full history but reported metrics only reflect START_DATE..END_DATE.
+via run_grid_search(..., rebuild_indicators=False), instead of being
+recomputed per combo like the default rebuild_indicators=True does. The
+backtest window itself is carved out afterward with slice_with_lookback +
+report_start, so warmup sees full history but reported metrics only
+reflect START_DATE..END_DATE.
 """
 
 from pathlib import Path
 
 from datasource.kline_loader import load_and_standardize_kline
 from optimize.date_window import slice_with_lookback
-from optimize.signal_grid_search import run_signal_grid_search
+from optimize.grid_search import run_grid_search
 from optimize.visualize import plot_heatmap
 from strategy import build_enriched, get_strategy
 
@@ -71,11 +73,12 @@ def main() -> None:
         enriched_full, start=START_DATE, end=END_DATE, lookback_bars=1
     )
 
-    results = run_signal_grid_search(
+    results = run_grid_search(
         enriched_window,
         strategy,
         PARAM_GRID,
         base_params=FIXED_OVERRIDES,
+        rebuild_indicators=False,
         report_start=START_DATE,
     )
 

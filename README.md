@@ -42,12 +42,12 @@ ChomoBackTester/
 │   ├── trades.py                # signal column -> trade list
 │   └── metrics.py                # trade list -> Net PnL / Sharpe / win rate / profit factor / …
 ├── optimize/                    # Parameter sweeps + visualization
-│   ├── grid_search.py                       # full param grid -> results DataFrame (recomputes indicators per combo)
-│   ├── signal_grid_search.py                # grid over generate_signals-only params (indicators built once, reused)
-│   ├── date_window.py                       # slice an enriched df to a backtest window, with lookback for warmup
-│   ├── visualize.py                         # heatmap / ranking bar chart, saved as PNG
-│   ├── example_grid_search.py               # runnable template: full grid search
-│   └── example_st_vrb_clean_touch_grid.py   # runnable template: signal-only grid search over a date window
+│   ├── grid_search.py            # generic: param grid -> results DataFrame (rebuild_indicators flag controls per-combo re-enrichment)
+│   ├── date_window.py            # generic: slice an enriched df to a backtest window, with lookback for warmup
+│   ├── visualize.py              # generic: heatmap / ranking bar chart, saved as PNG
+│   └── sweeps/                   # one runnable script per strategy's optimization run (not a library -- copy & adapt)
+│       ├── st_vol_band_reversal.py   # full grid search: st_length x st_factor
+│       └── st_vrb_clean_touch.py     # signal-only grid search: st_touch_pct x vrb_touch_pct, over a date window
 ├── market_info/                 # Input data directory (Binance K-line CSVs), {symbol}/ per pair
 ├── output/                      # Generated output (auto-created)
 │   ├── {strategy_name}/{symbol}/       # enriched+signals CSV, trade list, metrics
@@ -106,18 +106,30 @@ ChomoBackTester/
    average win/loss, largest win/loss, max drawdown, Sharpe/Sortino (per-trade, not annualized —
    see the docstring in `backtest/metrics.py`), and max consecutive win/loss streaks.
 
-5. **optimize/** drives `strategy` + `backtest` across a parameter grid, two ways:
-   - `run_grid_search(df, strategy, param_grid)` — the general case. Recomputes `build_indicators`
-     for every combo, so use it when the swept params include indicator params (e.g. `st_length`).
-   - `run_signal_grid_search(enriched, strategy, param_grid, base_params, report_start)` — for
-     sweeps where every swept key only affects `generate_signals` (e.g. a touch-distance threshold).
-     Indicators are built once by the caller and reused across every combo instead of being
-     recomputed per combo. Pair it with `date_window.slice_with_lookback` to scope the reported
-     backtest to a fixed date window while still giving indicators (and any row[t-1]-comparing
-     signal logic) real history to warm up on.
+5. **optimize/** drives `strategy` + `backtest` across a parameter grid. The three top-level modules
+   are a generic library, strategy-agnostic:
+   - `grid_search.run_grid_search(df, strategy, param_grid, base_params=None,
+     rebuild_indicators=True, report_start=None)` — one function, one loop
+     (`generate_signals` -> `extract_trades` -> `compute_metrics` per combo), two modes selected by
+     `rebuild_indicators`:
+     - `True` (default): `df` is the raw, not-yet-enriched frame; `build_indicators` reruns every
+       combo. Use this when swept params include indicator params (e.g. `st_length`).
+     - `False`: `df` is already an enriched frame (built once by the caller via
+       `strategy.build_enriched`) and reused across every combo. Use this when every swept key only
+       affects `generate_signals` (e.g. a touch-distance threshold), to skip recomputing indicators
+       once per combo for params that never touch them.
+   - `date_window.slice_with_lookback(df, start, end, lookback_bars)` — pair with
+     `rebuild_indicators=False` + `report_start` to scope the reported backtest to a fixed date
+     window while still giving indicators (and any row[t-1]-comparing signal logic) real history to
+     warm up on.
+   - `visualize.plot_heatmap` / `plot_bar_ranking` — turn a grid-search result into a heatmap (two
+     swept params vs. one metric) or a ranked bar chart (top N combos by a metric).
 
-   `visualize.py` turns either result into a heatmap (two swept params vs. one metric) or a ranked
-   bar chart (top N combos by a metric).
+   Optimization is otherwise strategy-specific — how a strategy's params get held fixed vs. swept,
+   which metrics matter, which date window applies — so that part isn't library code. Each
+   strategy's sweep lives as its own runnable script under `optimize/sweeps/`, built out of the three
+   generic modules above; copy one to start a new sweep rather than parameterizing a single script
+   over every strategy.
 
 6. **visual_tools/** is a third, independent consumer of the same `*_enriched_signals.csv` that
    `backtest/` reads — it never imports `strategy` or `backtest`, it just renders whatever columns
@@ -167,21 +179,29 @@ much of the tail to show — the underlying data is never truncated, only the re
 
 ### 5. Run a parameter sweep
 
-```bash
-python -m optimize.example_grid_search
-```
-
-Sweeps `st_length` × `st_factor` for the sample strategy, and writes a results CSV plus a
-profit-factor heatmap and a net-PnL ranking chart to `output/optimize/{strategy_name}/`. Copy this
-file and swap in your own `PARAM_GRID` / strategy / metric to build a new sweep.
-
-For sweeps over params that only affect signal logic (not indicators), and/or that should be scoped
-to a fixed date window, see `optimize/example_st_vrb_clean_touch_grid.py` instead — it builds
-indicators once and reuses them across the whole grid.
+Each strategy's sweep is its own script under `optimize/sweeps/`, built on the generic
+`grid_search`/`date_window`/`visualize` modules (see "How the pieces fit together" above). Two exist
+today:
 
 ```bash
-python -m optimize.example_st_vrb_clean_touch_grid
+python -m optimize.sweeps.st_vol_band_reversal
 ```
+
+Full grid search: sweeps `st_length` × `st_factor` (indicator params, so indicators are recomputed
+per combo), and writes a results CSV plus a profit-factor heatmap and a net-PnL ranking chart to
+`output/optimize/st_vol_band_reversal/`.
+
+```bash
+python -m optimize.sweeps.st_vrb_clean_touch
+```
+
+Signal-only grid search: sweeps `st_touch_pct` × `vrb_touch_pct` (signal-only params, so indicators
+are built once and reused) over a fixed date window, and writes a results CSV plus one heatmap per
+metric to `output/optimize/st_vrb_clean/zec/`.
+
+To sweep a different strategy, copy whichever of the two scripts matches your case (indicator params
+swept vs. signal-only params swept) into `optimize/sweeps/` and adapt `INPUT_FILE` / fixed params /
+`PARAM_GRID` / metrics.
 
 ---
 
