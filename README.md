@@ -101,10 +101,16 @@ ChomoBackTester/
 
 4. **backtest/** only consumes the enriched+signal DataFrame — it doesn't know or care which
    strategy produced it. `extract_trades(df)` walks `signal` and reconstructs a trade list (entry
-   price/time, exit price/time, pnl, return %, bars held, open/closed status). `compute_metrics(trades)`
-   turns that into a metrics dict: trade count, win rate, net PnL, gross profit/loss, profit factor,
-   average win/loss, largest win/loss, max drawdown, Sharpe/Sortino (per-trade, not annualized —
-   see the docstring in `backtest/metrics.py`), and max consecutive win/loss streaks.
+   price/time, exit price/time, `pnl`/`return_pct` per unit of the underlying, bars held,
+   open/closed status) — no position sizing, so `pnl` there is a raw price difference, not
+   comparable across symbols at different price scales. `compute_metrics(trades)` turns that into a
+   metrics dict: trade count, win rate, profit factor, Sharpe/Sortino (per-trade `return_pct`, not
+   annualized — see the docstring in `backtest/metrics.py`), max consecutive win/loss streaks, and
+   the dollar-denominated family (net PnL, gross profit/loss, average/largest win/loss, max
+   drawdown). That last group is derived from a compounded equity curve seeded at
+   `INITIAL_CAPITAL` (10,000, in `backtest/metrics.py`) — every trade risks 100% of current equity,
+   no leverage/partial sizing — so it's comparable across symbols; `net_pnl_pct`/`max_drawdown_pct`
+   give the same curve dimensionlessly.
 
 5. **optimize/** drives `strategy` + `backtest` across a parameter grid. The three top-level modules
    are a generic library, strategy-agnostic:

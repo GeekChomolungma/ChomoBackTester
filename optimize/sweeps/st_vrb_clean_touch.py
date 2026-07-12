@@ -51,12 +51,14 @@ PARAM_GRID = {
     "vrb_touch_pct": [round(0.01 * i, 2) for i in range(1, 11)],  # 0.01..0.10
 }
 
-# net_pnl/win_rate/max_drawdown/sharpe_ratio were asked for directly;
+# net_pnl_pct/win_rate/max_drawdown_pct/sharpe_ratio were asked for
+# directly (as the dimensionless equivalents of net_pnl/max_drawdown --
+# see backtest/metrics.py's INITIAL_CAPITAL-based equity curve);
 # profit_factor and total_trades are added on top since a "stable region"
 # call needs both a quality signal beyond win_rate alone (profit_factor)
 # and a sample-size sanity check (total_trades) -- a flat-looking sharpe
 # patch backed by 3 trades isn't a stable region, it's noise.
-METRICS = ["net_pnl", "win_rate", "max_drawdown", "sharpe_ratio", "profit_factor", "total_trades"]
+METRICS = ["net_pnl_pct", "win_rate", "max_drawdown_pct", "sharpe_ratio", "profit_factor", "total_trades"]
 
 
 def main() -> None:

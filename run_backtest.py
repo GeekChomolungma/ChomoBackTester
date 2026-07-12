@@ -36,7 +36,8 @@ def process_one_file(csv_path: Path, strategy) -> None:
 
     print(
         f"  trades={metrics['total_trades']} win_rate={metrics['win_rate']:.2f}% "
-        f"net_pnl={metrics['net_pnl']:.2f} profit_factor={metrics['profit_factor']:.3f}"
+        f"net_pnl_pct={metrics['net_pnl_pct']:.2f}% max_drawdown_pct={metrics['max_drawdown_pct']:.2f}% "
+        f"profit_factor={metrics['profit_factor']:.3f}"
     )
 
 
