@@ -47,7 +47,7 @@ ChomoBackTester/
 │   ├── visualize.py              # generic: heatmap / ranking bar chart, saved as PNG
 │   └── sweeps/                   # one runnable script per strategy's optimization run (not a library -- copy & adapt)
 │       ├── st_vol_band_reversal.py   # full grid search: st_length x st_factor
-│       └── st_vrb_clean_touch.py     # signal-only grid search: st_touch_pct x vrb_touch_pct, over a date window
+│       └── st_vrb_clean/touch.py     # signal-only grid search: st_touch_pct x vrb_touch_pct, over a date window
 ├── market_info/                 # Input data directory (Binance K-line CSVs), {symbol}/ per pair
 ├── output/                      # Generated output (auto-created)
 │   ├── {strategy_name}/{symbol}/       # enriched+signals CSV, trade list, metrics
@@ -133,9 +133,9 @@ ChomoBackTester/
 
    Optimization is otherwise strategy-specific — how a strategy's params get held fixed vs. swept,
    which metrics matter, which date window applies — so that part isn't library code. Each
-   strategy's sweep lives as its own runnable script under `optimize/sweeps/`, built out of the three
-   generic modules above; copy one to start a new sweep rather than parameterizing a single script
-   over every strategy.
+   strategy's sweep lives as its own runnable script under `optimize/sweeps/{strategy_name}/`, built
+   out of the three generic modules above; copy one to start a new sweep rather than parameterizing a
+   single script over every strategy.
 
 6. **visual_tools/** is a third, independent consumer of the same `*_enriched_signals.csv` that
    `backtest/` reads — it never imports `strategy` or `backtest`, it just renders whatever columns
@@ -190,7 +190,7 @@ Each strategy's sweep is its own script under `optimize/sweeps/`, built on the g
 today:
 
 ```bash
-python -m optimize.sweeps.st_vol_band_reversal
+python -m optimize.sweeps.st_vol_band_reversal.st
 ```
 
 Full grid search: sweeps `st_length` × `st_factor` (indicator params, so indicators are recomputed
@@ -198,16 +198,24 @@ per combo), and writes a results CSV plus a profit-factor heatmap and a net-PnL 
 `output/optimize/st_vol_band_reversal/`.
 
 ```bash
-python -m optimize.sweeps.st_vrb_clean_touch
+python -m optimize.sweeps.st_vrb_clean.touch
 ```
 
 Signal-only grid search: sweeps `st_touch_pct` × `vrb_touch_pct` (signal-only params, so indicators
 are built once and reused) over a fixed date window, and writes a results CSV plus one heatmap per
 metric to `output/optimize/st_vrb_clean/zec/`.
 
-To sweep a different strategy, copy whichever of the two scripts matches your case (indicator params
-swept vs. signal-only params swept) into `optimize/sweeps/` and adapt `INPUT_FILE` / fixed params /
-`PARAM_GRID` / metrics.
+For the enhanced ST+VRB strategy, use the matching grouped scripts:
+
+```bash
+python -m optimize.sweeps.st_vrb_enhanced.touch
+python -m optimize.sweeps.st_vrb_enhanced.profit_loss
+python -m optimize.sweeps.st_vrb_enhanced.st
+```
+
+To sweep a different strategy, copy whichever script matches your case (indicator params swept vs.
+signal-only params swept) into `optimize/sweeps/{strategy_name}/` and adapt `INPUT_FILE` / fixed
+params / `PARAM_GRID` / metrics.
 
 ---
 
@@ -249,6 +257,13 @@ take-profit that only applies to tier-1 entries, and an `use_short` switch (shor
 a plain close when disabled). See the docstring in `strategy/st_vrb_clean.py` for exactly what was
 and wasn't ported from the Pine source (alert payloads and position sizing were dropped as out of
 scope for this backtester).
+
+### st_vrb_enhanced
+
+Ported from `pine_files/strategy/st_vrb_enhanced.txt`. It keeps the same parameter interface as
+`st_vrb_clean`, but resolves each bar through one ordered branch only: B1, S1, B2, S2, B3, S3,
+stop-loss, then take-profit. B/S signals take priority over risk exits, B3/S3 remain close-only, and
+the stop/take-profit reference price is reset from the signal bar's close for B1/B2/S1/S2.
 
 ---
 

@@ -2,12 +2,12 @@
 Grid search over st_vrb_clean's SuperTrend params (st_length, st_factor)
 on one symbol/interval, over a fixed backtest window, with every other
 param held constant at the values already tuned by the earlier sweeps
-(st_vrb_clean_touch.py, st_vrb_clean_profit_loss.py) -- see the comments
+(touch.py, profit_loss.py) -- see the comments
 on FIXED_OVERRIDES below. Run as a module from the repo root:
 
-    python -m optimize.sweeps.st_vrb_clean_st
+    python -m optimize.sweeps.st_vrb_clean.st
 
-Copy this file under optimize/sweeps/ and swap INPUT_FILE /
+Copy this file under optimize/sweeps/{strategy_name}/ and swap INPUT_FILE /
 FIXED_OVERRIDES / PARAM_GRID / dates to adapt it to a different symbol,
 strategy, or param pair.
 
@@ -31,7 +31,7 @@ from optimize.visualize import plot_heatmap
 from strategy import get_strategy
 
 INPUT_FILE = Path("market_info/zec/ZECUSDT_4h_Binance.csv")
-OUTPUT_DIR = Path("output/optimize/st_vrb_clean_st/zec")
+OUTPUT_DIR = Path("output/optimize/st_vrb_clean/st/zec")
 
 START_DATE = "2026-04-05"
 END_DATE = None  # None = through the latest bar in the data
@@ -42,10 +42,10 @@ FIXED_OVERRIDES = {
     "vb_mult": 2.5,
     "vb_atr_mult": 1,
     "use_short": True,
-    "st_touch_pct": 0.05,      # optimal, found by optimize/sweeps/st_vrb_clean_touch.py
-    "vrb_touch_pct": 0.02,     # optimal, found by optimize/sweeps/st_vrb_clean_touch.py
-    "take_profit_pct": 0.05,   # optimal, found by optimize/sweeps/st_vrb_clean_profit_loss.py
-    "stop_loss_pct": 0.03,     # optimal, found by optimize/sweeps/st_vrb_clean_profit_loss.py
+    "st_touch_pct": 0.05,      # optimal, found by optimize/sweeps/st_vrb_clean/touch.py
+    "vrb_touch_pct": 0.02,     # optimal, found by optimize/sweeps/st_vrb_clean/touch.py
+    "take_profit_pct": 0.05,   # optimal, found by optimize/sweeps/st_vrb_clean/profit_loss.py
+    "stop_loss_pct": 0.03,     # optimal, found by optimize/sweeps/st_vrb_clean/profit_loss.py
 }
 
 PARAM_GRID = {

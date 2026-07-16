@@ -3,9 +3,9 @@ Grid search over st_vrb_clean's two "touch" thresholds (st_touch_pct,
 vrb_touch_pct) on one symbol/interval, over a fixed backtest window, with
 every other param held constant. Run as a module from the repo root:
 
-    python -m optimize.sweeps.st_vrb_clean_touch
+    python -m optimize.sweeps.st_vrb_clean.touch
 
-Copy this file under optimize/sweeps/ and swap INPUT_FILE /
+Copy this file under optimize/sweeps/{strategy_name}/ and swap INPUT_FILE /
 FIXED_OVERRIDES / PARAM_GRID / dates to adapt it to a different symbol,
 strategy, or param pair.
 
@@ -28,7 +28,7 @@ from optimize.visualize import plot_heatmap
 from strategy import build_enriched, get_strategy
 
 INPUT_FILE = Path("market_info/zec/ZECUSDT_4h_Binance.csv")
-OUTPUT_DIR = Path("output/optimize/st_vrb_clean_touch/zec")
+OUTPUT_DIR = Path("output/optimize/st_vrb_clean/touch/zec")
 
 START_DATE = "2026-04-05"
 END_DATE = None  # None = through the latest bar in the data
@@ -36,13 +36,13 @@ END_DATE = None  # None = through the latest bar in the data
 # Every param except st_touch_pct/vrb_touch_pct, held fixed at the values
 # already tuned by hand (see strategy/st_vrb_clean.py DEFAULT_PARAMS).
 FIXED_OVERRIDES = {
-    "st_length": 20,
-    "st_factor": 5.5,
+    "st_length": 24,
+    "st_factor": 5.0,
     "vb_length": 24,
     "vb_mult": 2.5,
     "vb_atr_mult": 1,
     "use_short": True,
-    "take_profit_pct": 0.1,
+    "take_profit_pct": 0.05,
     "stop_loss_pct": 0.03,
 }
 

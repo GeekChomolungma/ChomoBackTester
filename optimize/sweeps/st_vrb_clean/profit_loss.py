@@ -3,12 +3,12 @@ Grid search over st_vrb_clean's take-profit/stop-loss thresholds
 (take_profit_pct, stop_loss_pct) on one symbol/interval, over a fixed
 backtest window, with every other param held constant -- including
 st_touch_pct/vrb_touch_pct, fixed at the region found stable by
-optimize/sweeps/st_vrb_clean_touch.py (0.05 / 0.02). Run as a module from
+optimize/sweeps/st_vrb_clean/touch.py (0.05 / 0.02). Run as a module from
 the repo root:
 
-    python -m optimize.sweeps.st_vrb_clean_profit_loss
+    python -m optimize.sweeps.st_vrb_clean.profit_loss
 
-Copy this file under optimize/sweeps/ and swap INPUT_FILE /
+Copy this file under optimize/sweeps/{strategy_name}/ and swap INPUT_FILE /
 FIXED_OVERRIDES / PARAM_GRID / dates to adapt it to a different symbol,
 strategy, or param pair.
 
@@ -31,7 +31,7 @@ from optimize.visualize import plot_heatmap
 from strategy import build_enriched, get_strategy
 
 INPUT_FILE = Path("market_info/zec/ZECUSDT_4h_Binance.csv")
-OUTPUT_DIR = Path("output/optimize/st_vrb_clean_profit_loss/zec")
+OUTPUT_DIR = Path("output/optimize/st_vrb_clean/profit_loss/zec")
 
 START_DATE = "2026-04-05"
 END_DATE = None  # None = through the latest bar in the data

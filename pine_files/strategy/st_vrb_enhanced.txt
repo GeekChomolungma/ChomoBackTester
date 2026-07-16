@@ -1,0 +1,328 @@
+//@version=5
+strategy("st_vrb_enhance", overlay=true, pyramiding=0,
+     initial_capital=100000,
+     default_qty_type=strategy.cash,
+     default_qty_value=100000,
+     commission_type=strategy.commission.percent,
+     commission_value=0.1)
+
+// =====================================================================
+// === Inputs ==========================================================
+// =====================================================================
+
+g = "ST + VRB"
+
+ST_up  = input.source(close, "ST Red Line", group=g)
+ST_dn  = input.source(close, "ST Blue Line", group=g)
+ST_dir = input.source(close, "ST Direction", group=g)
+
+VRB_upper = input.source(close, "VRB Upper", group=g)
+VRB_lower = input.source(close, "VRB Lower", group=g)
+
+useShort = input.bool(false, "Enable Short", group=g)
+showSig  = input.bool(true, "Show Signals", group=g)
+
+stTouchPct    = input.float(0.05, "ST Touch Distance", step=0.001, group=g)
+vrbTouchPct   = input.float(0.02, "VRB Boundary Zone", step=0.01, group=g)
+takeProfitPct = input.float(0.05, "Take Profit", step=0.005, group=g)
+stopLossPct   = input.float(0.03, "Fixed Stop Loss", step=0.005, group=g)
+
+strategyAmount = input.float(500, "Strategy Amount", step=50, group=g)
+signalId       = input.string("f9a2fa51-3bd9-41", "Signal ID", group=g)
+
+entryAmount   = str.tostring(strategyAmount)
+reverseAmount = str.tostring(strategyAmount * 2)
+closeAmount   = str.tostring(strategyAmount * 3)
+
+fromTime = input.time(timestamp("2024-01-01T00:00:00"), "From")
+toTime   = input.time(timestamp("2112-01-01T00:00:00"), "To")
+inDate   = time >= fromTime and time <= toTime
+
+
+// =====================================================================
+// === Alert messages ==================================================
+// =====================================================================
+
+entryBuyMsg =
+     '{"symbol":"' + syminfo.ticker + '","side":"buy","positionSide":"BOTH","investmentType":"notional_value","amount":"' + entryAmount + '","price":"market","reduceOnly":false,"positionMode":"one_way_mode","signalId":"' + signalId + '","uid":"bcb5ba0369fceede2427d939092c0db4b13f819873a6a0cb4e28ea4b32cc08a5"}'
+
+entrySellMsg =
+     '{"symbol":"' + syminfo.ticker + '","side":"sell","positionSide":"BOTH","investmentType":"notional_value","amount":"' + entryAmount + '","price":"market","reduceOnly":false,"positionMode":"one_way_mode","signalId":"' + signalId + '","uid":"bcb5ba0369fceede2427d939092c0db4b13f819873a6a0cb4e28ea4b32cc08a5"}'
+
+reverseBuyMsg =
+     '{"symbol":"' + syminfo.ticker + '","side":"buy","positionSide":"BOTH","investmentType":"notional_value","amount":"' + reverseAmount + '","price":"market","reduceOnly":false,"positionMode":"one_way_mode","signalId":"' + signalId + '","uid":"bcb5ba0369fceede2427d939092c0db4b13f819873a6a0cb4e28ea4b32cc08a5"}'
+
+reverseSellMsg =
+     '{"symbol":"' + syminfo.ticker + '","side":"sell","positionSide":"BOTH","investmentType":"notional_value","amount":"' + reverseAmount + '","price":"market","reduceOnly":false,"positionMode":"one_way_mode","signalId":"' + signalId + '","uid":"bcb5ba0369fceede2427d939092c0db4b13f819873a6a0cb4e28ea4b32cc08a5"}'
+
+closeLongMsg =
+     '{"symbol":"' + syminfo.ticker + '","side":"sell","positionSide":"BOTH","investmentType":"notional_value","amount":"' + closeAmount + '","price":"market","reduceOnly":true,"positionMode":"one_way_mode","signalId":"' + signalId + '","uid":"bcb5ba0369fceede2427d939092c0db4b13f819873a6a0cb4e28ea4b32cc08a5"}'
+
+closeShortMsg =
+     '{"symbol":"' + syminfo.ticker + '","side":"buy","positionSide":"BOTH","investmentType":"notional_value","amount":"' + closeAmount + '","price":"market","reduceOnly":true,"positionMode":"one_way_mode","signalId":"' + signalId + '","uid":"bcb5ba0369fceede2427d939092c0db4b13f819873a6a0cb4e28ea4b32cc08a5"}'
+
+
+// =====================================================================
+// === Signal calculation ==============================================
+// =====================================================================
+
+// ST_dir: -1 为牛市，1 为熊市。
+bullST = ST_dir == -1
+bearST = ST_dir == 1
+
+// Level 1: SuperTrend direction flip.
+mainBuy  = ta.crossunder(ST_dir, 0)  // 1 -> -1，转牛
+mainSell = ta.crossover(ST_dir, 0)   // -1 -> 1，转熊
+
+// Level 2: SuperTrend boundary touch.
+touchBlue = bullST and math.abs(low - ST_dn) / close <= stTouchPct
+touchRed  = bearST and math.abs(high - ST_up) / close <= stTouchPct
+
+// Level 3: VRB boundary touch.
+vrbRange = math.max(VRB_upper - VRB_lower, syminfo.mintick)
+vrbRatio = (close - VRB_lower) / vrbRange
+
+touchVrbLower = vrbRatio <= vrbTouchPct
+touchVrbUpper = vrbRatio >= 1.0 - vrbTouchPct
+
+// 每个方向内部按照 Level 1 > Level 2 > Level 3 归因。
+longReason =
+     mainBuy       ? 1 :
+     touchBlue     ? 2 :
+     touchVrbLower ? 3 : 0
+
+shortReason =
+     mainSell      ? 1 :
+     touchRed      ? 2 :
+     touchVrbUpper ? 3 : 0
+
+longSignal  = inDate and longReason > 0
+shortSignal = inDate and shortReason > 0
+
+// 同一根 K 线同时产生多空方向信号时，不执行方向性动作。
+onlyLongSignal  = longSignal and not shortSignal
+onlyShortSignal = shortSignal and not longSignal
+
+longB1Triggered = onlyLongSignal and longReason == 1
+longB2Triggered = onlyLongSignal and longReason == 2
+longB3Triggered = onlyLongSignal and longReason == 3
+
+shortS1Triggered = onlyShortSignal and shortReason == 1
+shortS2Triggered = onlyShortSignal and shortReason == 2
+shortS3Triggered = onlyShortSignal and shortReason == 3
+
+
+// =====================================================================
+// === Position state and risk triggers ================================
+// =====================================================================
+
+// TradingView 自动维护 strategy.position_avg_price，但 B1/B2/S1/S2 在
+// 已有同向仓位中出现时不会重复下单，因此使用独立参考价格重新计算止盈止损。
+var float positionReferencePrice = na
+
+hasLongPosition  = strategy.position_size > 0
+hasShortPosition = strategy.position_size < 0
+hasNoPosition    = strategy.position_size == 0
+
+longStopTriggered =
+     hasLongPosition and
+     close <= positionReferencePrice * (1 - stopLossPct)
+
+shortStopTriggered =
+     hasShortPosition and
+     close >= positionReferencePrice * (1 + stopLossPct)
+
+longTakeProfitTriggered =
+     hasLongPosition and
+     close >= positionReferencePrice * (1 + takeProfitPct)
+
+shortTakeProfitTriggered =
+     hasShortPosition and
+     close <= positionReferencePrice * (1 - takeProfitPct)
+
+
+// =====================================================================
+// === Signal resolution and final execution ===========================
+// =====================================================================
+//
+// 每根 K 线最多执行一个分支。
+// 所有 B/S 信号均优先于止损和止盈，实际判断顺序为：
+//
+//   1. B1
+//   2. S1
+//   3. B2
+//   4. S2
+//   5. B3
+//   6. S3
+//   7. 多头止损
+//   8. 空头止损
+//   9. 多头止盈
+//  10. 空头止盈
+//
+// 因此，即使某根 K 线同时满足止损或止盈，只要前面存在有效 B/S 信号，
+// 本根 K 线就只处理该 B/S 信号。
+// =====================================================================
+
+// ---------------------------------------------------------------------
+// 1. B1
+// ---------------------------------------------------------------------
+
+if longB1Triggered
+
+    if hasNoPosition
+        strategy.entry("Long_B1", strategy.long, alert_message=entryBuyMsg)
+
+    else if hasShortPosition
+        strategy.entry("Long_B1", strategy.long, alert_message=reverseBuyMsg)
+
+    // 已有多仓时不重复下单，但仍更新止盈止损参考价格。
+    positionReferencePrice := close
+
+
+// ---------------------------------------------------------------------
+// 2. S1
+// ---------------------------------------------------------------------
+
+else if shortS1Triggered
+
+    if useShort
+
+        if hasNoPosition
+            strategy.entry("Short_S1", strategy.short, alert_message=entrySellMsg)
+
+        else if hasLongPosition
+            strategy.entry("Short_S1", strategy.short, alert_message=reverseSellMsg)
+
+        // 已有空仓时不重复下单，但仍更新止盈止损参考价格。
+        positionReferencePrice := close
+
+    else if hasLongPosition
+
+        // 禁止做空时，S1 只负责关闭多仓。
+        strategy.close_all(alert_message=closeLongMsg)
+        positionReferencePrice := na
+
+
+// ---------------------------------------------------------------------
+// 3. B2
+// ---------------------------------------------------------------------
+
+else if longB2Triggered
+
+    if hasNoPosition
+        strategy.entry("Long_B2", strategy.long, alert_message=entryBuyMsg)
+
+    else if hasShortPosition
+        strategy.entry("Long_B2", strategy.long, alert_message=reverseBuyMsg)
+
+    // 已有多仓时不重复下单，仅重置参考价格。
+    positionReferencePrice := close
+
+
+// ---------------------------------------------------------------------
+// 4. S2
+// ---------------------------------------------------------------------
+
+else if shortS2Triggered
+
+    if useShort
+
+        if hasNoPosition
+            strategy.entry("Short_S2", strategy.short, alert_message=entrySellMsg)
+
+        else if hasLongPosition
+            strategy.entry("Short_S2", strategy.short, alert_message=reverseSellMsg)
+
+        // 已有空仓时不重复下单，仅重置参考价格。
+        positionReferencePrice := close
+
+    else if hasLongPosition
+
+        // 禁止做空时，S2 只负责关闭多仓。
+        strategy.close_all(alert_message=closeLongMsg)
+        positionReferencePrice := na
+
+
+// ---------------------------------------------------------------------
+// 5. B3
+// ---------------------------------------------------------------------
+
+else if longB3Triggered
+
+    // B3 不建立多仓，只关闭已有空仓。
+    if hasShortPosition
+        strategy.close_all(alert_message=closeShortMsg)
+        positionReferencePrice := na
+
+
+// ---------------------------------------------------------------------
+// 6. S3
+// ---------------------------------------------------------------------
+
+else if shortS3Triggered
+
+    // S3 不建立空仓，只关闭已有多仓。
+    if hasLongPosition
+        strategy.close_all(alert_message=closeLongMsg)
+        positionReferencePrice := na
+
+
+// ---------------------------------------------------------------------
+// 7. Stop loss
+// ---------------------------------------------------------------------
+
+else if longStopTriggered
+
+    strategy.close_all(alert_message=closeLongMsg)
+    positionReferencePrice := na
+
+
+else if shortStopTriggered
+
+    strategy.close_all(alert_message=closeShortMsg)
+    positionReferencePrice := na
+
+
+// ---------------------------------------------------------------------
+// 8. Take profit
+// ---------------------------------------------------------------------
+
+else if longTakeProfitTriggered
+
+    strategy.close_all(alert_message=closeLongMsg)
+    positionReferencePrice := na
+
+
+else if shortTakeProfitTriggered
+
+    strategy.close_all(alert_message=closeShortMsg)
+    positionReferencePrice := na
+
+
+// =====================================================================
+// === Plot ============================================================
+// =====================================================================
+
+plotshape(showSig and longReason == 1, title="B1", text="B1",
+     style=shape.labelup, location=location.belowbar,
+     color=color.new(color.aqua, 20), textcolor=color.white)
+
+plotshape(showSig and shortReason == 1, title="S1", text="S1",
+     style=shape.labeldown, location=location.abovebar,
+     color=color.new(color.red, 20), textcolor=color.white)
+
+plotshape(showSig and longReason == 2, title="B2", text="B2",
+     style=shape.labelup, location=location.belowbar,
+     color=color.new(color.aqua, 45), textcolor=color.white)
+
+plotshape(showSig and shortReason == 2, title="S2", text="S2",
+     style=shape.labeldown, location=location.abovebar,
+     color=color.new(color.red, 45), textcolor=color.white)
+
+plotshape(showSig and longReason == 3, title="B3", text="B3",
+     style=shape.labelup, location=location.belowbar,
+     color=color.new(color.aqua, 65), textcolor=color.white)
+
+plotshape(showSig and shortReason == 3, title="S3", text="S3",
+     style=shape.labeldown, location=location.abovebar,
+     color=color.new(color.red, 65), textcolor=color.white)

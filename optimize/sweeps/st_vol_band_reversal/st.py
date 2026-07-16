@@ -8,7 +8,7 @@ starting point for a new strategy's sweep -- swap PARAM_GRID / INPUT_FILE
 (needed so the top-level datasource/strategy/backtest/optimize packages
 resolve):
 
-    python -m optimize.sweeps.st_vol_band_reversal
+    python -m optimize.sweeps.st_vol_band_reversal.st
 """
 
 from pathlib import Path
@@ -19,7 +19,7 @@ from optimize.visualize import plot_bar_ranking, plot_heatmap
 from strategy import get_strategy
 
 INPUT_FILE = Path("market_info/ltc/LTCUSDT_4h_Binance.csv")
-OUTPUT_DIR = Path("output/optimize/st_vol_band_reversal")
+OUTPUT_DIR = Path("output/optimize/st_vol_band_reversal/st")
 
 PARAM_GRID = {
     "st_length": [7, 10, 14, 21],

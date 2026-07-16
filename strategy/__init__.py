@@ -6,10 +6,12 @@ from indicators import apply_indicator
 from .base import Strategy
 from .st_vol_band_reversal import STRATEGY as ST_VOL_BAND_REVERSAL
 from .st_vrb_clean import STRATEGY as ST_VRB_CLEAN
+from .st_vrb_enhanced import STRATEGY as ST_VRB_ENHANCED
 
 STRATEGY_REGISTRY: dict[str, Strategy] = {
     ST_VOL_BAND_REVERSAL.name: ST_VOL_BAND_REVERSAL,
     ST_VRB_CLEAN.name: ST_VRB_CLEAN,
+    ST_VRB_ENHANCED.name: ST_VRB_ENHANCED,
 }
 
 
